@@ -93,8 +93,38 @@ async function generateAudio(text) {
   return filename;
 }
 
+// Fallback response generator (when OpenClaw not configured)
+function generateFallbackResponse(input) {
+  const text = input.toLowerCase();
+  
+  if (text.includes('time')) {
+    const now = new Date();
+    return `The current time is ${now.toLocaleTimeString('en-AU', { timeZone: 'Australia/Melbourne', hour: 'numeric', minute: '2-digit' })}.`;
+  }
+  
+  if (text.includes('weather')) {
+    return 'I can help with weather information. OpenClaw integration is not configured yet.';
+  }
+  
+  if (text.includes('hello') || text.includes('hi ')) {
+    return 'Hello! I\'m your OpenClaw voice assistant. How can I help you?';
+  }
+  
+  if (text.includes('help')) {
+    return 'I can answer questions and help with various tasks. Ask me about the time, weather, or anything else!';
+  }
+  
+  return 'I heard you say: ' + input + '. OpenClaw integration is not configured yet, but I\'m ready when you are!';
+}
+
 // Send message to OpenClaw session
 async function sendToOpenClaw(message, phoneNumber) {
+  // If no gateway token, use fallback
+  if (!GATEWAY_TOKEN) {
+    console.log('No GATEWAY_TOKEN set, using fallback responses');
+    return generateFallbackResponse(message);
+  }
+  
   try {
     const response = await axios.post(
       `${GATEWAY_URL}/api/sessions/send`,
@@ -116,7 +146,7 @@ async function sendToOpenClaw(message, phoneNumber) {
     return response.data.message || response.data.response || 'I didn\'t catch that.';
   } catch (error) {
     console.error('OpenClaw API error:', error.response?.data || error.message);
-    return 'Sorry, I\'m having trouble connecting right now. Please try again.';
+    return 'Sorry, I\'m having trouble connecting to OpenClaw. Using fallback: ' + generateFallbackResponse(message);
   }
 }
 
