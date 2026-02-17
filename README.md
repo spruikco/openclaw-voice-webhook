@@ -109,13 +109,67 @@ function generateResponse(input) {
 2. `ELEVENLABS_API_KEY` set → Uses ElevenLabs voices (premium, natural)
 3. ElevenLabs fails → Automatic fallback to Polly
 
+## 💬 SMS Support
+
+The server also handles **incoming text messages** using the same conversational logic as voice calls.
+
+### Setup SMS Webhook
+
+1. Log into [Twilio Console](https://console.twilio.com)
+2. Go to **Phone Numbers** → **Manage** → **Active Numbers**
+3. Click on your phone number
+4. Scroll to **Messaging Configuration**
+5. Under **A MESSAGE COMES IN**:
+   - Select: **Webhook**
+   - HTTP: **POST**
+   - URL: `https://your-deployed-url/sms`
+6. Click **Save**
+
+### How It Works
+
+When someone texts your Twilio number:
+1. Twilio sends the message to `/sms` endpoint
+2. Server processes it using `generateResponse()`
+3. Returns TwiML with reply text
+4. Twilio sends the reply back to the sender
+
+### Example Conversation
+
+```
+User: "What's the time?"
+Bot: "The current time is 3:45 PM."
+
+User: "Help"
+Bot: "I can answer questions, provide information, or help with tasks. Just ask!"
+```
+
+### SMS vs Voice
+
+Both use the same server and logic:
+- **Voice**: `/voice` → Speech recognition → TwiML with `<Say>` or `<Play>`
+- **SMS**: `/sms` → Text message → TwiML with `<Message>`
+
+Any customizations to `generateResponse()` work for both voice and SMS!
+
 ## API Endpoints
 
 ### `POST /voice`
-Main webhook endpoint. Twilio calls this when someone dials your number.
+Voice webhook endpoint. Twilio calls this when someone dials your number.
+
+**Request:** Twilio sends call metadata (From, CallSid, etc.)  
+**Response:** TwiML with `<Say>` or `<Play>` and `<Gather>` for speech input
 
 ### `POST /voice/respond`
-Handles speech recognition results and generates responses.
+Speech response handler. Receives transcribed speech and generates replies.
+
+**Request:** Twilio sends `SpeechResult` and `Confidence`  
+**Response:** TwiML with voice response
+
+### `POST /sms`
+SMS webhook endpoint. Twilio calls this when someone texts your number.
+
+**Request:** Twilio sends `From` and `Body` (the text message)  
+**Response:** TwiML with `<Message>` containing the reply
 
 ### `GET /status`
 Health check endpoint. Returns:
@@ -123,7 +177,8 @@ Health check endpoint. Returns:
 {
   "status": "ok",
   "service": "openclaw-voice",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "voiceEngine": "ElevenLabs",
   "uptime": 1234.56
 }
 ```

@@ -241,6 +241,25 @@ function escapeXml(unsafe) {
   }[c]));
 }
 
+// SMS webhook endpoint
+app.post('/sms', (req, res) => {
+  const from = req.body.From || 'unknown';
+  const body = req.body.Body || '';
+  
+  console.log(`💬 SMS from ${from}: "${body}"`);
+  
+  // Generate response using same logic as voice
+  const reply = generateResponse(body.toLowerCase());
+  
+  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>${escapeXml(reply)}</Message>
+</Response>`;
+  
+  res.type('text/xml');
+  res.send(twiml);
+});
+
 // Health check endpoint
 app.get('/status', (req, res) => {
   res.json({
@@ -285,9 +304,10 @@ if (USE_ELEVENLABS) {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`✓ OpenClaw Voice webhook server running on port ${PORT}`);
-  console.log(`  POST /voice - Main webhook endpoint`);
+  console.log(`✓ OpenClaw Voice & SMS webhook server running on port ${PORT}`);
+  console.log(`  POST /voice - Voice webhook (incoming calls)`);
   console.log(`  POST /voice/respond - Speech response handler`);
+  console.log(`  POST /sms - SMS webhook (incoming texts)`);
   console.log(`  GET  /status - Health check`);
   if (USE_ELEVENLABS) {
     console.log(`  GET  /audio/:id - Serve audio files`);
