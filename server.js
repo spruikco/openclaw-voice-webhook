@@ -3,7 +3,12 @@ const axios = require('axios');
 const twilio = require('twilio');
 const crypto = require('crypto');
 const AWS = require('aws-sdk');
-const ElevenLabs = require('elevenlabs-node');
+let ElevenLabs;
+try {
+  ElevenLabs = require('elevenlabs-node');
+} catch (e) {
+  console.log('ElevenLabs module not found - will use Polly only');
+}
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -25,11 +30,16 @@ const polly = new AWS.Polly({
 
 // ElevenLabs setup (primary)
 let voice = null;
-if (ELEVENLABS_API_KEY) {
-  voice = new ElevenLabs({
-    apiKey: ELEVENLABS_API_KEY,
-    voiceId: ELEVENLABS_VOICE_ID
-  });
+if (ELEVENLABS_API_KEY && ElevenLabs) {
+  try {
+    voice = new ElevenLabs({
+      apiKey: ELEVENLABS_API_KEY,
+      voiceId: ELEVENLABS_VOICE_ID
+    });
+    console.log('ElevenLabs voice enabled');
+  } catch (e) {
+    console.log('ElevenLabs initialization failed:', e.message);
+  }
 }
 
 app.use(express.urlencoded({ extended: false }));
