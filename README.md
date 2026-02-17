@@ -1,357 +1,150 @@
-# OpenClaw Voice Webhook
+# OpenClaw Voice & SMS Integration (v3.0)
 
-A conversational voice webhook server for Twilio that enables back-and-forth speech interactions with your phone system.
+**Fully integrated voice and SMS system that connects directly to your OpenClaw session.**
 
-## Features
+## What's New in v3.0
 
-- 🎤 **Speech recognition** - Listens to what callers say
-- 🗣️ **Natural voice responses** - Uses Twilio's high-quality voices (including Australian English)
-- 🔄 **Conversational flow** - Keeps the conversation going until the caller hangs up
-- 🌍 **Customizable** - Easy to modify responses for your use case
-- 🚀 **One-click deploy** - Works on Railway, Render, Fly.io, and more
+- ✅ **Real OpenClaw Integration**: Speech/SMS → OpenClaw session → Intelligent response
+- ✅ **Full Context**: Access to weather, calendar, memory, skills, everything
+- ✅ **Session Memory**: Maintains conversation context across calls
+- ✅ **Dynamic Responses**: No hardcoded responses, real AI thinking
+- ✅ **ElevenLabs Premium Voice**: Natural-sounding speech with Polly fallback
 
-## Quick Deploy
+## How It Works
 
-### Railway (Recommended - Free Tier)
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template)
+```
+User calls/texts → Twilio → Webhook → OpenClaw API → Response → TTS → User
+```
 
-### Render
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+Every interaction goes through OpenClaw's full AI pipeline with access to:
+- Weather service
+- Calendar integrations
+- Browser automation results
+- Memory/context
+- All installed skills
 
-### Manual Deploy
+## Environment Variables
+
+### Required
+- `GATEWAY_URL` - Your OpenClaw Gateway URL (e.g., `https://gateway.openclaw.ai`)
+- `GATEWAY_TOKEN` - OpenClaw API authentication token
+- `TWILIO_ACCOUNT_SID` - Twilio Account SID
+- `TWILIO_AUTH_TOKEN` - Twilio Auth Token
+
+### Optional (for premium voice)
+- `ELEVENLABS_API_KEY` - ElevenLabs API key
+- `ELEVENLABS_VOICE_ID` - Voice ID (default: Adam)
+- `AWS_ACCESS_KEY_ID` - AWS credentials for Polly fallback
+- `AWS_SECRET_ACCESS_KEY` - AWS credentials for Polly fallback
+
+## Deployment
+
+### Render.com
+
+1. **Create Web Service** from this repo
+2. **Add Environment Variables** (see above)
+3. **Set Start Command**: `npm start`
+4. **Upgrade to Paid Tier** ($7/mo) - eliminates cold starts
+
+### Railway / Fly.io
+
+Similar process - add environment variables and deploy.
+
+## Twilio Configuration
+
+1. Go to Twilio Console → Phone Numbers
+2. Set **Voice Webhook**: `https://your-service.onrender.com/voice`
+3. Set **SMS Webhook**: `https://your-service.onrender.com/sms`
+4. Save changes
+
+## Testing
+
+Call or text your Twilio number. The system will:
+1. Receive your speech/text
+2. Send it to OpenClaw for processing
+3. Get intelligent response with full context
+4. Convert to speech (for calls) or text (for SMS)
+5. Play/send response back to you
+
+## Local Development
+
 ```bash
-git clone https://github.com/spruikco/openclaw-voice-webhook.git
-cd openclaw-voice-webhook
 npm install
+export GATEWAY_URL=https://your-gateway.openclaw.ai
+export GATEWAY_TOKEN=your_token_here
+export TWILIO_ACCOUNT_SID=ACxxxxx
+export TWILIO_AUTH_TOKEN=xxxxx
 npm start
 ```
 
-## Setup
+## OpenClaw Gateway Token
 
-### 1. Deploy the Server
-
-Deploy using one of the methods above. You'll get a public URL like:
-- `https://your-app.railway.app`
-- `https://your-app.onrender.com`
-- `https://your-app.fly.dev`
-
-### 2. Configure Twilio
-
-1. Log into [Twilio Console](https://console.twilio.com)
-2. Go to **Phone Numbers** → **Manage** → **Active Numbers**
-3. Click on your phone number
-4. Under **Voice Configuration**:
-   - **A CALL COMES IN**: `POST` to `https://your-deployed-url/voice`
-5. Click **Save**
-
-### 3. Test It!
-
-Call your Twilio number and start talking! The system will:
-1. Greet you
-2. Listen to what you say
-3. Respond based on your input
-4. Keep the conversation going
-
-## Customization
-
-### Change the Voice
-
-Edit `server.js` or set environment variables:
-
-```bash
-# Use American English female voice
-VOICE=Polly.Joanna LANGUAGE=en-US npm start
-
-# Use British English male voice
-VOICE=Polly.Brian LANGUAGE=en-GB npm start
-```
-
-Available voices: [Twilio Voice List](https://www.twilio.com/docs/voice/twiml/say/text-speech#amazon-polly)
-
-### Customize Responses
-
-Edit the `generateResponse()` function in `server.js`:
-
-```javascript
-function generateResponse(input) {
-  if (input.includes('your keyword')) {
-    return "Your custom response here!";
-  }
-  // Add more conditions...
-}
-```
-
-### Environment Variables
-
-#### Required
-- `PORT` - Server port (default: 3030)
-
-#### Voice Configuration
-
-**Default Voice (AWS Polly - Free):**
-- `VOICE` - Polly voice name (default: `Polly.Nicole`)
-  - Australian: `Polly.Nicole` (female), `Polly.Russell` (male)
-  - American: `Polly.Joanna` (female), `Polly.Matthew` (male)
-  - British: `Polly.Amy` (female), `Polly.Brian` (male)
-  - Full list: https://docs.aws.amazon.com/polly/latest/dg/voicelist.html
-- `LANGUAGE` - Language code (default: `en-AU`)
-  - `en-AU` (Australian), `en-US` (American), `en-GB` (British)
-
-**Premium Voice (ElevenLabs - Optional):**
-- `ELEVENLABS_API_KEY` - Your API key from elevenlabs.io **(required to enable ElevenLabs)**
-- `ELEVENLABS_VOICE_ID` - Voice ID to select which voice **(required when using ElevenLabs)**
-  - Default: `pNInz6obpgDQGcFmaJgB` (Adam - clear neutral male)
-  - Australian males: `Xb7hH8MSUJpSbSDYk0k2` (Bill), `flq6f7yk4E4fJM5XTYuZ` (Liam)
-  - Browse & preview all voices: https://elevenlabs.io/voice-library
-
-**How It Works:**
-1. No `ELEVENLABS_API_KEY` → Uses AWS Polly (free, instant)
-2. `ELEVENLABS_API_KEY` set → Uses ElevenLabs voices (premium, natural)
-3. ElevenLabs fails → Automatic fallback to Polly
-
-## 💬 SMS Support
-
-The server also handles **incoming text messages** using the same conversational logic as voice calls.
-
-### Setup SMS Webhook
-
-1. Log into [Twilio Console](https://console.twilio.com)
-2. Go to **Phone Numbers** → **Manage** → **Active Numbers**
-3. Click on your phone number
-4. Scroll to **Messaging Configuration**
-5. Under **A MESSAGE COMES IN**:
-   - Select: **Webhook**
-   - HTTP: **POST**
-   - URL: `https://your-deployed-url/sms`
-6. Click **Save**
-
-### How It Works
-
-When someone texts your Twilio number:
-1. Twilio sends the message to `/sms` endpoint
-2. Server processes it using `generateResponse()`
-3. Returns TwiML with reply text
-4. Twilio sends the reply back to the sender
-
-### Example Conversation
-
-```
-User: "What's the time?"
-Bot: "The current time is 3:45 PM."
-
-User: "Help"
-Bot: "I can answer questions, provide information, or help with tasks. Just ask!"
-```
-
-### SMS vs Voice
-
-Both use the same server and logic:
-- **Voice**: `/voice` → Speech recognition → TwiML with `<Say>` or `<Play>`
-- **SMS**: `/sms` → Text message → TwiML with `<Message>`
-
-Any customizations to `generateResponse()` work for both voice and SMS!
-
-## API Endpoints
-
-### `POST /voice`
-Voice webhook endpoint. Twilio calls this when someone dials your number.
-
-**Request:** Twilio sends call metadata (From, CallSid, etc.)  
-**Response:** TwiML with `<Say>` or `<Play>` and `<Gather>` for speech input
-
-### `POST /voice/respond`
-Speech response handler. Receives transcribed speech and generates replies.
-
-**Request:** Twilio sends `SpeechResult` and `Confidence`  
-**Response:** TwiML with voice response
-
-### `POST /sms`
-SMS webhook endpoint. Twilio calls this when someone texts your number.
-
-**Request:** Twilio sends `From` and `Body` (the text message)  
-**Response:** TwiML with `<Message>` containing the reply
-
-### `GET /status`
-Health check endpoint. Returns:
-```json
-{
-  "status": "ok",
-  "service": "openclaw-voice",
-  "version": "2.0.0",
-  "voiceEngine": "ElevenLabs",
-  "uptime": 1234.56
-}
-```
+To get your Gateway token:
+1. Log into OpenClaw web interface
+2. Go to Settings → API
+3. Generate a new token with `sessions.send` permission
+4. Copy token and add to environment variables
 
 ## Architecture
 
-```
-┌─────────────┐      ┌──────────────┐      ┌────────────────┐
-│   Caller    │─────▶│   Twilio     │─────▶│  Your Server   │
-│             │      │   (Voice)    │      │  /voice        │
-└─────────────┘      └──────────────┘      └────────────────┘
-                            │                       │
-                            │  Speech Result        │
-                            │◀──────────────────────┘
-                            │
-                            │  TwiML Response
-                            │◀──────────────────────┐
-                            ▼                       │
-                     ┌──────────────┐      ┌────────────────┐
-                     │  Speak to    │      │  Your Server   │
-                     │  Caller      │      │  /voice/respond│
-                     └──────────────┘      └────────────────┘
-```
+- **Express.js** - Web server
+- **Twilio SDK** - TwiML generation
+- **Axios** - OpenClaw API calls
+- **ElevenLabs** - Premium TTS (primary)
+- **AWS Polly** - TTS fallback
+- **Audio Caching** - Fast responses for repeated phrases
 
-## Use Cases
+## Pricing Considerations
 
-- **Personal assistant** - Call to get information, set reminders
-- **Business hotline** - Automated customer service
-- **Home automation** - Control smart home via phone call
-- **Information line** - Weather, time, news, etc.
-- **Integration hub** - Connect phone calls to other services
+- **Render Free Tier**: Has cold starts (30s delay)
+- **Render Paid ($7/mo)**: Always-on, instant response
+- **ElevenLabs**: ~$0.30 per 1000 characters
+- **AWS Polly**: ~$4 per 1 million characters
+- **Twilio**: ~$0.01-0.02 per minute for calls
 
-## Advanced: Integrate with OpenClaw
+## Voice Quality
 
-To connect this with your full OpenClaw instance:
+**ElevenLabs** (when configured):
+- Natural, human-like speech
+- Multiple voice options
+- Emotional range
+- Premium pricing
 
-1. Add API calls in `generateResponse()` to query your OpenClaw backend
-2. Use environment variables to pass OpenClaw API credentials
-3. Return dynamic responses based on your data
+**AWS Polly** (fallback):
+- Neural voices available
+- Reliable, fast
+- Lower cost
+- Slightly robotic
 
-Example:
-```javascript
-async function generateResponse(input) {
-  const response = await fetch('https://your-openclaw-api/query', {
-    method: 'POST',
-    body: JSON.stringify({ text: input })
-  });
-  const data = await response.json();
-  return data.answer;
-}
-```
+## Session Management
+
+Each phone number gets its own OpenClaw session with label `voice-{phone_number}`.
+
+This means:
+- Conversation context is maintained
+- Memory persists across calls
+- Can reference previous interactions
+- "Remember when I asked about weather earlier?"
 
 ## Troubleshooting
 
-### "Application error" when calling
-- Check your server logs to see if it's running
-- Verify the webhook URL in Twilio is correct
-- Ensure your server is publicly accessible (not localhost)
+**Application Error on call:**
+- Service is sleeping (free tier) - call again or upgrade
+- Check Render logs for errors
 
-### No speech recognition
-- Speak clearly after the prompt
-- Check that `language` matches your accent (en-US, en-AU, en-GB, etc.)
-- Ensure Twilio can reach your `/voice/respond` endpoint
+**"I'm having trouble connecting":**
+- Check `GATEWAY_URL` and `GATEWAY_TOKEN` are correct
+- Verify OpenClaw Gateway is running
+- Check Render logs for API errors
 
-### Server not starting
-- Run `npm install` to ensure dependencies are installed
-- Check that port 3030 is available or set a different `PORT` env var
+**Robotic voice:**
+- ElevenLabs not configured, using Polly fallback
+- Add `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`
 
-## Contributing
-
-Pull requests welcome! To contribute:
-
-1. Fork the repo
-2. Create a feature branch
-3. Make your changes
-4. Test with a Twilio number
-5. Submit a PR
+**No response:**
+- OpenClaw session timeout (increase `timeoutSeconds` in code)
+- Check OpenClaw Gateway logs
 
 ## License
 
-MIT License - feel free to use this for personal or commercial projects.
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/spruikco/openclaw-voice-webhook/issues)
-- **Docs**: [OpenClaw Documentation](https://docs.openclaw.ai)
-- **Community**: [OpenClaw Discord](https://discord.com/invite/clawd)
-
----
-
-Built with ❤️ by the OpenClaw community
-
----
-
-## 🎙️ Premium: ElevenLabs Voice (Optional)
-
-Upgrade to ultra-realistic, human-like voices with [ElevenLabs](https://elevenlabs.io).
-
-### Why ElevenLabs?
-
-- 🗣️ **Natural speech** - Sounds like a real person, not a robot
-- 🌍 **Many accents** - Australian, British, American, and more
-- 🎭 **Voice cloning** - Use your own voice or celebrity voices
-- 🎚️ **Fine control** - Adjust emotion, pace, and emphasis
-
-### Setup ElevenLabs
-
-1. **Get API Key**
-   - Sign up at [elevenlabs.io](https://elevenlabs.io)
-   - Go to Profile → API Keys
-   - Copy your API key
-
-2. **Choose a Voice**
-   - Browse voices with audio previews: https://elevenlabs.io/voice-library
-   - Click on a voice you like
-   - Copy the **Voice ID** (shown on the voice details)
-
-3. **Add Environment Variables** (both required)
-   ```bash
-   ELEVENLABS_API_KEY=your_api_key_here
-   ELEVENLABS_VOICE_ID=your_chosen_voice_id
-   ```
-   
-   ⚠️ **Both keys are required** - the API key enables ElevenLabs, the Voice ID selects which voice to use.
-
-### Voice Recommendations
-
-**Australian Accents:**
-- `EXAVITQu4vr4xnSDxMaL` - Sarah (Female, Australian)
-- `pNInz6obpgDQGcFmaJgB` - Adam (Male, Clear/Neutral)
-
-**Other Popular:**
-- `21m00Tcm4TlvDq8ikWAM` - Rachel (Female, American)
-- `ErXwobaYiN019PkySvjV` - Antoni (Male, American)
-- `VR6AewLTigWG4xSOukaG` - Arnold (Male, American)
-
-Browse all voices at: https://elevenlabs.io/voice-library
-
-### Cost
-
-ElevenLabs offers:
-- **Free Tier**: 10,000 characters/month (~30 minutes of speech)
-- **Paid Plans**: From $5/month for more usage
-
-AWS Polly (default) is always free to use via Twilio.
-
-### Deployment with ElevenLabs
-
-**Railway:**
-1. Deploy as normal
-2. Go to Variables tab
-3. Add `ELEVENLABS_API_KEY=your_key`
-4. Add `ELEVENLABS_VOICE_ID=your_voice_id`
-5. Redeploy
-
-**Render:**
-1. Deploy as normal
-2. Go to Environment tab
-3. Click "Add Environment Variable"
-4. Add both:
-   - `ELEVENLABS_API_KEY` with your key
-   - `ELEVENLABS_VOICE_ID` with your chosen voice ID
-5. Save (auto-redeploys)
-
-**Fly.io:**
-```bash
-flyctl secrets set ELEVENLABS_API_KEY=your_key
-flyctl secrets set ELEVENLABS_VOICE_ID=voice_id
-```
-
-💡 **Tip:** Without `ELEVENLABS_VOICE_ID`, it will use the default voice (Adam). Set it to customize which voice speaks!
-
-### Automatic Fallback
-
-If ElevenLabs fails (network issue, quota exceeded, etc.), the system automatically falls back to AWS Polly. Your callers always hear something!
-
+MIT
