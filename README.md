@@ -83,9 +83,31 @@ function generateResponse(input) {
 
 ### Environment Variables
 
+#### Required
 - `PORT` - Server port (default: 3030)
-- `VOICE` - Twilio voice name (default: Polly.Nicole for Australian English)
-- `LANGUAGE` - Voice language code (default: en-AU)
+
+#### Voice Configuration
+
+**Default Voice (AWS Polly - Free):**
+- `VOICE` - Polly voice name (default: `Polly.Nicole`)
+  - Australian: `Polly.Nicole` (female), `Polly.Russell` (male)
+  - American: `Polly.Joanna` (female), `Polly.Matthew` (male)
+  - British: `Polly.Amy` (female), `Polly.Brian` (male)
+  - Full list: https://docs.aws.amazon.com/polly/latest/dg/voicelist.html
+- `LANGUAGE` - Language code (default: `en-AU`)
+  - `en-AU` (Australian), `en-US` (American), `en-GB` (British)
+
+**Premium Voice (ElevenLabs - Optional):**
+- `ELEVENLABS_API_KEY` - Your API key from elevenlabs.io **(required to enable ElevenLabs)**
+- `ELEVENLABS_VOICE_ID` - Voice ID to select which voice **(required when using ElevenLabs)**
+  - Default: `pNInz6obpgDQGcFmaJgB` (Adam - clear neutral male)
+  - Australian males: `Xb7hH8MSUJpSbSDYk0k2` (Bill), `flq6f7yk4E4fJM5XTYuZ` (Liam)
+  - Browse & preview all voices: https://elevenlabs.io/voice-library
+
+**How It Works:**
+1. No `ELEVENLABS_API_KEY` → Uses AWS Polly (free, instant)
+2. `ELEVENLABS_API_KEY` set → Uses ElevenLabs voices (premium, natural)
+3. ElevenLabs fails → Automatic fallback to Polly
 
 ## API Endpoints
 
@@ -214,18 +236,18 @@ Upgrade to ultra-realistic, human-like voices with [ElevenLabs](https://elevenla
    - Go to Profile → API Keys
    - Copy your API key
 
-2. **Add Environment Variable**
+2. **Choose a Voice**
+   - Browse voices with audio previews: https://elevenlabs.io/voice-library
+   - Click on a voice you like
+   - Copy the **Voice ID** (shown on the voice details)
+
+3. **Add Environment Variables** (both required)
    ```bash
    ELEVENLABS_API_KEY=your_api_key_here
+   ELEVENLABS_VOICE_ID=your_chosen_voice_id
    ```
-
-3. **Optional: Choose a Voice**
-   - Browse voices: https://elevenlabs.io/voice-library
-   - Copy the Voice ID
-   - Set environment variable:
-   ```bash
-   ELEVENLABS_VOICE_ID=voice_id_here
-   ```
+   
+   ⚠️ **Both keys are required** - the API key enables ElevenLabs, the Voice ID selects which voice to use.
 
 ### Voice Recommendations
 
@@ -253,21 +275,26 @@ AWS Polly (default) is always free to use via Twilio.
 **Railway:**
 1. Deploy as normal
 2. Go to Variables tab
-3. Add `ELEVENLABS_API_KEY`
-4. Add `ELEVENLABS_VOICE_ID` (optional)
+3. Add `ELEVENLABS_API_KEY=your_key`
+4. Add `ELEVENLABS_VOICE_ID=your_voice_id`
 5. Redeploy
 
 **Render:**
 1. Deploy as normal
 2. Go to Environment tab
-3. Add environment variables
-4. Save (auto-redeploys)
+3. Click "Add Environment Variable"
+4. Add both:
+   - `ELEVENLABS_API_KEY` with your key
+   - `ELEVENLABS_VOICE_ID` with your chosen voice ID
+5. Save (auto-redeploys)
 
 **Fly.io:**
 ```bash
 flyctl secrets set ELEVENLABS_API_KEY=your_key
 flyctl secrets set ELEVENLABS_VOICE_ID=voice_id
 ```
+
+💡 **Tip:** Without `ELEVENLABS_VOICE_ID`, it will use the default voice (Adam). Set it to customize which voice speaks!
 
 ### Automatic Fallback
 
