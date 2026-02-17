@@ -193,3 +193,83 @@ MIT License - feel free to use this for personal or commercial projects.
 ---
 
 Built with ❤️ by the OpenClaw community
+
+---
+
+## 🎙️ Premium: ElevenLabs Voice (Optional)
+
+Upgrade to ultra-realistic, human-like voices with [ElevenLabs](https://elevenlabs.io).
+
+### Why ElevenLabs?
+
+- 🗣️ **Natural speech** - Sounds like a real person, not a robot
+- 🌍 **Many accents** - Australian, British, American, and more
+- 🎭 **Voice cloning** - Use your own voice or celebrity voices
+- 🎚️ **Fine control** - Adjust emotion, pace, and emphasis
+
+### Setup ElevenLabs
+
+1. **Get API Key**
+   - Sign up at [elevenlabs.io](https://elevenlabs.io)
+   - Go to Profile → API Keys
+   - Copy your API key
+
+2. **Add Environment Variable**
+   ```bash
+   ELEVENLABS_API_KEY=your_api_key_here
+   ```
+
+3. **Optional: Choose a Voice**
+   - Browse voices: https://elevenlabs.io/voice-library
+   - Copy the Voice ID
+   - Set environment variable:
+   ```bash
+   ELEVENLABS_VOICE_ID=voice_id_here
+   ```
+
+### Voice Recommendations
+
+**Australian Accents:**
+- `EXAVITQu4vr4xnSDxMaL` - Sarah (Female, Australian)
+- `pNInz6obpgDQGcFmaJgB` - Adam (Male, Clear/Neutral)
+
+**Other Popular:**
+- `21m00Tcm4TlvDq8ikWAM` - Rachel (Female, American)
+- `ErXwobaYiN019PkySvjV` - Antoni (Male, American)
+- `VR6AewLTigWG4xSOukaG` - Arnold (Male, American)
+
+Browse all voices at: https://elevenlabs.io/voice-library
+
+### Cost
+
+ElevenLabs offers:
+- **Free Tier**: 10,000 characters/month (~30 minutes of speech)
+- **Paid Plans**: From $5/month for more usage
+
+AWS Polly (default) is always free to use via Twilio.
+
+### Deployment with ElevenLabs
+
+**Railway:**
+1. Deploy as normal
+2. Go to Variables tab
+3. Add `ELEVENLABS_API_KEY`
+4. Add `ELEVENLABS_VOICE_ID` (optional)
+5. Redeploy
+
+**Render:**
+1. Deploy as normal
+2. Go to Environment tab
+3. Add environment variables
+4. Save (auto-redeploys)
+
+**Fly.io:**
+```bash
+flyctl secrets set ELEVENLABS_API_KEY=your_key
+flyctl secrets set ELEVENLABS_VOICE_ID=voice_id
+```
+
+### Automatic Fallback
+
+If ElevenLabs fails (network issue, quota exceeded, etc.), the system automatically falls back to AWS Polly. Your callers always hear something!
+
