@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: openclaw-voice
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    plan: free
+    healthCheckPath: /status
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VOICE
+        value: Polly.Nicole
+      - key: LANGUAGE
+        value: en-AU
