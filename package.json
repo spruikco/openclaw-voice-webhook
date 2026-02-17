@@ -1,7 +1,7 @@
 {
   "name": "openclaw-voice",
-  "version": "3.2.0",
-  "description": "OpenClaw Voice & SMS with ElevenLabs premium voices",
+  "version": "3.3.0",
+  "description": "OpenClaw Voice & SMS with ElevenLabs premium voices (REST API)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,8 +9,7 @@
   "dependencies": {
     "express": "^4.18.2",
     "twilio": "^4.19.0",
-    "axios": "^1.6.0",
-    "elevenlabs-node": "^1.1.0"
+    "axios": "^1.6.0"
   },
   "engines": {
     "node": ">=18.0.0"

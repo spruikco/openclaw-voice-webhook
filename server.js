@@ -1,7 +1,6 @@
 const express = require('express');
 const axios = require('axios');
 const twilio = require('twilio');
-const ElevenLabs = require('elevenlabs-node');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -17,13 +16,9 @@ const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFm
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-// ElevenLabs voice setup
-let voice = null;
-if (ELEVENLABS_API_KEY) {
-  voice = new ElevenLabs({
-    apiKey: ELEVENLABS_API_KEY,
-    voiceId: ELEVENLABS_VOICE_ID
-  });
+// Check if ElevenLabs is configured
+const elevenLabsEnabled = !!ELEVENLABS_API_KEY;
+if (elevenLabsEnabled) {
   console.log('ElevenLabs enabled with voice:', ELEVENLABS_VOICE_ID);
 } else {
   console.log('ElevenLabs not configured, will use Twilio Polly voices');
@@ -38,20 +33,34 @@ function getAudioUrl(req, hash) {
   return `${req.protocol}://${req.get('host')}/audio/${hash}.mp3`;
 }
 
-// Generate audio with ElevenLabs
+// Generate audio with ElevenLabs (using REST API directly)
 async function generateElevenLabsAudio(text) {
-  if (!voice) return null;
+  if (!ELEVENLABS_API_KEY) return null;
   
   try {
-    const audio = await voice.textToSpeech({
-      text: text,
-      voice_id: ELEVENLABS_VOICE_ID,
-      model_id: 'eleven_turbo_v2'
-    });
+    const response = await axios.post(
+      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+      {
+        text: text,
+        model_id: 'eleven_turbo_v2',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75
+        }
+      },
+      {
+        headers: {
+          'Accept': 'audio/mpeg',
+          'xi-api-key': ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        responseType: 'arraybuffer'
+      }
+    );
     
-    return audio; // Returns buffer
+    return Buffer.from(response.data);
   } catch (err) {
-    console.error('ElevenLabs TTS error:', err.message);
+    console.error('ElevenLabs TTS error:', err.response?.data || err.message);
     return null;
   }
 }
@@ -122,7 +131,7 @@ app.post('/voice', async (req, res) => {
     const greeting = "Hello! I'm your OpenClaw assistant. How can I help you today?";
     
     // Try ElevenLabs first
-    if (voice) {
+    if (ELEVENLABS_API_KEY) {
       const audio = await generateElevenLabsAudio(greeting);
       if (audio) {
         const hash = require('crypto').createHash('md5').update(greeting).digest('hex');
@@ -148,7 +157,7 @@ app.post('/voice', async (req, res) => {
     });
 
     const prompt = "I'm listening...";
-    if (voice) {
+    if (ELEVENLABS_API_KEY) {
       const audio = await generateElevenLabsAudio(prompt);
       if (audio) {
         const hash = require('crypto').createHash('md5').update(prompt).digest('hex');
@@ -204,7 +213,7 @@ app.post('/voice/respond', async (req, res) => {
     const response = await sendToOpenClaw(speechResult, from);
     
     // Generate audio
-    if (voice) {
+    if (ELEVENLABS_API_KEY) {
       const audio = await generateElevenLabsAudio(response);
       if (audio) {
         const hash = require('crypto').createHash('md5').update(response).digest('hex');
@@ -227,7 +236,7 @@ app.post('/voice/respond', async (req, res) => {
     });
 
     const followup = "Is there anything else?";
-    if (voice) {
+    if (ELEVENLABS_API_KEY) {
       const audio = await generateElevenLabsAudio(followup);
       if (audio) {
         const hash = require('crypto').createHash('md5').update(followup).digest('hex');
