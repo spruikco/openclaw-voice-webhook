@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const twilio = require('twilio');
+const ElevenLabs = require('elevenlabs-node');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -10,11 +11,52 @@ const GATEWAY_URL = process.env.GATEWAY_URL;
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN;
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB';
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-// Fallback response generator (when OpenClaw not configured)
+// ElevenLabs voice setup
+let voice = null;
+if (ELEVENLABS_API_KEY) {
+  voice = new ElevenLabs({
+    apiKey: ELEVENLABS_API_KEY,
+    voiceId: ELEVENLABS_VOICE_ID
+  });
+  console.log('ElevenLabs enabled with voice:', ELEVENLABS_VOICE_ID);
+} else {
+  console.log('ElevenLabs not configured, will use Twilio Polly voices');
+}
+
+// Audio storage for ElevenLabs
+const audioCache = new Map();
+const audioUrls = new Map();
+
+// Generate unique URL for audio
+function getAudioUrl(req, hash) {
+  return `${req.protocol}://${req.get('host')}/audio/${hash}.mp3`;
+}
+
+// Generate audio with ElevenLabs
+async function generateElevenLabsAudio(text) {
+  if (!voice) return null;
+  
+  try {
+    const audio = await voice.textToSpeech({
+      text: text,
+      voice_id: ELEVENLABS_VOICE_ID,
+      model_id: 'eleven_turbo_v2'
+    });
+    
+    return audio; // Returns buffer
+  } catch (err) {
+    console.error('ElevenLabs TTS error:', err.message);
+    return null;
+  }
+}
+
+// Fallback response generator
 function generateFallbackResponse(input) {
   const text = input.toLowerCase();
   
@@ -38,11 +80,10 @@ function generateFallbackResponse(input) {
   return 'I heard you say: ' + input + '. How can I help you with that?';
 }
 
-// Send message to OpenClaw session
+// Send message to OpenClaw
 async function sendToOpenClaw(message, phoneNumber) {
-  // If no gateway token, use fallback
   if (!GATEWAY_TOKEN) {
-    console.log('No GATEWAY_TOKEN set, using fallback responses');
+    console.log('No GATEWAY_TOKEN, using fallback');
     return generateFallbackResponse(message);
   }
   
@@ -78,11 +119,26 @@ app.post('/voice', async (req, res) => {
   console.log(`Incoming call from ${from}`);
 
   try {
-    // Greet caller
-    twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, 
-      "Hello! I'm your OpenClaw assistant. How can I help you today?");
+    const greeting = "Hello! I'm your OpenClaw assistant. How can I help you today?";
     
-    // Gather speech input
+    // Try ElevenLabs first
+    if (voice) {
+      const audio = await generateElevenLabsAudio(greeting);
+      if (audio) {
+        const hash = require('crypto').createHash('md5').update(greeting).digest('hex');
+        audioCache.set(hash, audio);
+        const audioUrl = getAudioUrl(req, hash);
+        twiml.play(audioUrl);
+      } else {
+        // Fallback to Twilio Polly
+        twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, greeting);
+      }
+    } else {
+      // No ElevenLabs, use Twilio Polly
+      twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, greeting);
+    }
+    
+    // Gather speech
     const gather = twiml.gather({
       input: 'speech',
       action: '/voice/respond',
@@ -91,9 +147,21 @@ app.post('/voice', async (req, res) => {
       language: 'en-AU'
     });
 
-    gather.say({ voice: 'Polly.Nicole', language: 'en-AU' }, "I'm listening...");
+    const prompt = "I'm listening...";
+    if (voice) {
+      const audio = await generateElevenLabsAudio(prompt);
+      if (audio) {
+        const hash = require('crypto').createHash('md5').update(prompt).digest('hex');
+        audioCache.set(hash, audio);
+        gather.play(getAudioUrl(req, hash));
+      } else {
+        gather.say({ voice: 'Polly.Nicole', language: 'en-AU' }, prompt);
+      }
+    } else {
+      gather.say({ voice: 'Polly.Nicole', language: 'en-AU' }, prompt);
+    }
 
-    // Fallback if no input
+    // Fallback
     twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, 
       "Sorry, I didn't hear anything. Please call back when you're ready.");
 
@@ -106,7 +174,7 @@ app.post('/voice', async (req, res) => {
   res.send(twiml.toString());
 });
 
-// Voice response - handle speech input
+// Voice response
 app.post('/voice/respond', async (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
   const speechResult = req.body.SpeechResult || '';
@@ -132,13 +200,24 @@ app.post('/voice/respond', async (req, res) => {
       return;
     }
 
-    // Get response from OpenClaw or fallback
+    // Get response
     const response = await sendToOpenClaw(speechResult, from);
     
-    // Speak the response
-    twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, response);
+    // Generate audio
+    if (voice) {
+      const audio = await generateElevenLabsAudio(response);
+      if (audio) {
+        const hash = require('crypto').createHash('md5').update(response).digest('hex');
+        audioCache.set(hash, audio);
+        twiml.play(getAudioUrl(req, hash));
+      } else {
+        twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, response);
+      }
+    } else {
+      twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, response);
+    }
 
-    // Ask if they need anything else
+    // Ask for more
     const gather = twiml.gather({
       input: 'speech',
       action: '/voice/respond',
@@ -147,9 +226,20 @@ app.post('/voice/respond', async (req, res) => {
       language: 'en-AU'
     });
 
-    gather.say({ voice: 'Polly.Nicole', language: 'en-AU' }, "Is there anything else?");
+    const followup = "Is there anything else?";
+    if (voice) {
+      const audio = await generateElevenLabsAudio(followup);
+      if (audio) {
+        const hash = require('crypto').createHash('md5').update(followup).digest('hex');
+        audioCache.set(hash, audio);
+        gather.play(getAudioUrl(req, hash));
+      } else {
+        gather.say({ voice: 'Polly.Nicole', language: 'en-AU' }, followup);
+      }
+    } else {
+      gather.say({ voice: 'Polly.Nicole', language: 'en-AU' }, followup);
+    }
 
-    // Goodbye if no response
     twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, "Alright, goodbye!");
 
   } catch (error) {
@@ -159,6 +249,19 @@ app.post('/voice/respond', async (req, res) => {
 
   res.type('text/xml');
   res.send(twiml.toString());
+});
+
+// Serve audio files from memory
+app.get('/audio/:hash.mp3', (req, res) => {
+  const hash = req.params.hash;
+  const audio = audioCache.get(hash);
+  
+  if (audio) {
+    res.type('audio/mpeg');
+    res.send(audio);
+  } else {
+    res.status(404).send('Audio not found');
+  }
 });
 
 // SMS webhook
@@ -185,14 +288,17 @@ app.post('/sms', async (req, res) => {
 app.get('/status', (req, res) => {
   res.json({
     status: 'ok',
-    service: 'openclaw-voice-simple',
-    version: '3.1.0',
+    service: 'openclaw-voice',
+    version: '3.2.0',
+    elevenLabsEnabled: !!ELEVENLABS_API_KEY,
+    voiceId: ELEVENLABS_VOICE_ID,
     gatewayConnected: !!GATEWAY_TOKEN,
     uptime: process.uptime()
   });
 });
 
 app.listen(port, () => {
-  console.log(`OpenClaw Voice (Simple) listening on port ${port}`);
-  console.log(`Gateway: ${GATEWAY_URL || 'Not configured - using fallback'}`);
+  console.log(`OpenClaw Voice listening on port ${port}`);
+  console.log(`ElevenLabs: ${ELEVENLABS_API_KEY ? 'Enabled' : 'Disabled (using Twilio Polly)'}`);
+  console.log(`Gateway: ${GATEWAY_URL || 'Not configured'}`);
 });
