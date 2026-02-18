@@ -8,20 +8,78 @@ const port = process.env.PORT || 3000;
 // Configuration
 const GATEWAY_URL = process.env.GATEWAY_URL;
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN;
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB';
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-// Check if ElevenLabs is configured
-const elevenLabsEnabled = !!ELEVENLABS_API_KEY;
-console.log('ElevenLabs:', elevenLabsEnabled ? 'Enabled' : 'Disabled');
-console.log('Gateway:', GATEWAY_URL || 'Not configured');
+console.log('ElevenLabs API Key:', ELEVENLABS_API_KEY ? 'Set' : 'Not set');
+console.log('ElevenLabs Voice ID:', ELEVENLABS_VOICE_ID);
 
-// Fallback response generator
+// Audio cache in memory
+const audioCache = new Map();
+
+// Generate ElevenLabs audio with timeout
+async function generateElevenLabsAudio(text, timeoutMs = 8000) {
+  if (!ELEVENLABS_API_KEY) {
+    throw new Error('ElevenLabs API key not set');
+  }
+  
+  const cacheKey = `${ELEVENLABS_VOICE_ID}:${text}`;
+  if (audioCache.has(cacheKey)) {
+    console.log('Using cached audio');
+    return audioCache.get(cacheKey);
+  }
+  
+  console.log(`Generating ElevenLabs audio: "${text.substring(0, 50)}..."`);
+  
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    
+    const response = await axios.post(
+      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+      {
+        text: text,
+        model_id: 'eleven_turbo_v2',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75
+        }
+      },
+      {
+        headers: {
+          'Accept': 'audio/mpeg',
+          'xi-api-key': ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        responseType: 'arraybuffer',
+        signal: controller.signal,
+        timeout: timeoutMs
+      }
+    );
+    
+    clearTimeout(timeout);
+    
+    const buffer = Buffer.from(response.data);
+    audioCache.set(cacheKey, buffer);
+    console.log(`Generated ${buffer.length} bytes of audio`);
+    
+    // Limit cache size
+    if (audioCache.size > 50) {
+      const firstKey = audioCache.keys().next().value;
+      audioCache.delete(firstKey);
+    }
+    
+    return buffer;
+  } catch (err) {
+    console.error('ElevenLabs error:', err.message);
+    throw err;
+  }
+}
+
+// Fallback responses
 function generateFallbackResponse(input) {
   const text = input.toLowerCase();
   
@@ -45,10 +103,9 @@ function generateFallbackResponse(input) {
   return 'I heard you say: ' + input + '. How can I help you with that?';
 }
 
-// Send message to OpenClaw
+// Send to OpenClaw
 async function sendToOpenClaw(message, phoneNumber) {
   if (!GATEWAY_TOKEN) {
-    console.log('No GATEWAY_TOKEN, using fallback');
     return generateFallbackResponse(message);
   }
   
@@ -59,38 +116,45 @@ async function sendToOpenClaw(message, phoneNumber) {
         message: message,
         label: `voice-${phoneNumber}`,
         agentId: 'main',
-        timeoutSeconds: 30
+        timeoutSeconds: 25
       },
       {
         headers: {
           'Authorization': `Bearer ${GATEWAY_TOKEN}`,
           'Content-Type': 'application/json'
         },
-        timeout: 25000
+        timeout: 20000
       }
     );
 
     return response.data.message || response.data.response || 'I didn\'t catch that.';
   } catch (error) {
-    console.error('OpenClaw API error:', error.message);
+    console.error('OpenClaw error:', error.message);
     return generateFallbackResponse(message);
   }
 }
 
-// Voice webhook - initial call
-app.post('/voice', (req, res) => {
+// Voice webhook
+app.post('/voice', async (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
   const from = req.body.From;
 
-  console.log(`Incoming call from ${from}`);
+  console.log(`Call from ${from}`);
 
-  // Use Twilio's built-in voice (fast, reliable)
-  twiml.say({ 
-    voice: 'Polly.Nicole', 
-    language: 'en-AU' 
-  }, "Hello! I'm your OpenClaw assistant. How can I help you today?");
+  const greeting = "Hello! I'm your OpenClaw assistant. How can I help you today?";
   
-  // Gather speech
+  try {
+    // Try ElevenLabs with 5s timeout
+    const audio = await generateElevenLabsAudio(greeting, 5000);
+    const hash = require('crypto').createHash('md5').update(greeting).digest('hex');
+    audioCache.set(`audio:${hash}`, audio);
+    
+    twiml.play(`${req.protocol}://${req.get('host')}/audio/${hash}.mp3`);
+  } catch (err) {
+    console.log('ElevenLabs failed, using Polly:', err.message);
+    twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, greeting);
+  }
+  
   const gather = twiml.gather({
     input: 'speech',
     action: '/voice/respond',
@@ -99,9 +163,7 @@ app.post('/voice', (req, res) => {
     language: 'en-AU'
   });
 
-  // Fallback
-  twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, 
-    "Sorry, I didn't hear anything. Goodbye!");
+  twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, "Goodbye!");
 
   res.type('text/xml');
   res.send(twiml.toString());
@@ -113,12 +175,12 @@ app.post('/voice/respond', async (req, res) => {
   const speechResult = req.body.SpeechResult || '';
   const from = req.body.From;
 
-  console.log(`Speech from ${from}: "${speechResult}"`);
+  console.log(`Speech: "${speechResult}"`);
 
   try {
     if (!speechResult) {
       twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, 
-        "I didn't catch that. Could you repeat that?");
+        "I didn't catch that. Could you repeat?");
       
       twiml.gather({
         input: 'speech',
@@ -133,16 +195,24 @@ app.post('/voice/respond', async (req, res) => {
       return;
     }
 
-    // Get response (with timeout to prevent hanging)
+    // Get response with timeout
     const response = await Promise.race([
       sendToOpenClaw(speechResult, from),
-      new Promise((resolve) => setTimeout(() => resolve('Sorry, that took too long. Please try again.'), 20000))
+      new Promise((resolve) => setTimeout(() => resolve('That took too long. Try again?'), 18000))
     ]);
     
-    // Speak response
-    twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, response);
+    // Try ElevenLabs for response
+    try {
+      const audio = await generateElevenLabsAudio(response, 5000);
+      const hash = require('crypto').createHash('md5').update(response).digest('hex');
+      audioCache.set(`audio:${hash}`, audio);
+      
+      twiml.play(`${req.protocol}://${req.get('host')}/audio/${hash}.mp3`);
+    } catch (err) {
+      console.log('ElevenLabs failed, using Polly');
+      twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, response);
+    }
 
-    // Ask for more
     const gather = twiml.gather({
       input: 'speech',
       action: '/voice/respond',
@@ -152,11 +222,10 @@ app.post('/voice/respond', async (req, res) => {
     });
 
     gather.say({ voice: 'Polly.Nicole', language: 'en-AU' }, "Anything else?");
-
     twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, "Goodbye!");
 
   } catch (error) {
-    console.error('Response error:', error);
+    console.error('Error:', error);
     twiml.say({ voice: 'Polly.Nicole', language: 'en-AU' }, 
       'Sorry, I encountered an error.');
   }
@@ -165,40 +234,54 @@ app.post('/voice/respond', async (req, res) => {
   res.send(twiml.toString());
 });
 
-// SMS webhook
+// Serve audio from memory
+app.get('/audio/:hash.mp3', (req, res) => {
+  const hash = req.params.hash;
+  const audio = audioCache.get(`audio:${hash}`);
+  
+  if (audio) {
+    res.type('audio/mpeg');
+    res.send(audio);
+  } else {
+    res.status(404).send('Not found');
+  }
+});
+
+// SMS
 app.post('/sms', async (req, res) => {
   const twiml = new twilio.twiml.MessagingResponse();
   const body = req.body.Body || '';
   const from = req.body.From;
 
-  console.log(`SMS from ${from}: "${body}"`);
+  console.log(`SMS: "${body}"`);
 
   try {
     const response = await sendToOpenClaw(body, from);
     twiml.message(response);
   } catch (error) {
     console.error('SMS error:', error);
-    twiml.message('Sorry, I encountered an error. Please try again.');
+    twiml.message('Sorry, error occurred.');
   }
 
   res.type('text/xml');
   res.send(twiml.toString());
 });
 
-// Health check
+// Status
 app.get('/status', (req, res) => {
   res.json({
     status: 'ok',
     service: 'openclaw-voice',
-    version: '3.4.0',
-    voiceEngine: 'Twilio Polly',
-    elevenLabsConfigured: elevenLabsEnabled,
-    gatewayConnected: !!GATEWAY_TOKEN,
+    version: '3.5.0',
+    elevenLabs: !!ELEVENLABS_API_KEY,
+    voiceId: ELEVENLABS_VOICE_ID,
+    cachedAudio: audioCache.size,
+    gateway: !!GATEWAY_TOKEN,
     uptime: process.uptime()
   });
 });
 
 app.listen(port, () => {
-  console.log(`OpenClaw Voice v3.4 listening on port ${port}`);
-  console.log(`Using: Twilio Polly.Nicole (Australian voice)`);
+  console.log(`OpenClaw Voice v3.5 on port ${port}`);
+  console.log(`ElevenLabs: ${ELEVENLABS_API_KEY ? 'ENABLED' : 'DISABLED'}`);
 });

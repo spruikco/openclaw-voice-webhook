@@ -1,7 +1,7 @@
 {
   "name": "openclaw-voice",
-  "version": "3.4.0",
-  "description": "OpenClaw Voice & SMS - fast and reliable with Twilio Polly",
+  "version": "3.5.0",
+  "description": "OpenClaw Voice with ElevenLabs (proper timeout handling)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
