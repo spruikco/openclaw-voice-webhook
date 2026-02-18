@@ -1,7 +1,7 @@
 {
   "name": "openclaw-voice",
-  "version": "3.3.0",
-  "description": "OpenClaw Voice & SMS with ElevenLabs premium voices (REST API)",
+  "version": "3.4.0",
+  "description": "OpenClaw Voice & SMS - fast and reliable with Twilio Polly",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
