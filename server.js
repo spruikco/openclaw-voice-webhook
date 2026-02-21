@@ -10,6 +10,9 @@ const GATEWAY_URL = process.env.GATEWAY_URL;
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB';
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
@@ -19,6 +22,23 @@ console.log('ElevenLabs Voice ID:', ELEVENLABS_VOICE_ID);
 
 // Audio cache in memory
 const audioCache = new Map();
+
+// Twilio client for sending SMS
+const twilioClient = TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN 
+  ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+  : null;
+
+// Contact name lookup
+const CONTACTS = {
+  '+61421242330': 'Rosie',
+  '+61403149183': 'Mum',
+  '+61434349454': 'Rye',
+  '+61449991539': 'Ben Anderson',
+};
+
+function getContactName(phoneNumber) {
+  return CONTACTS[phoneNumber] || phoneNumber;
+}
 
 // Generate ElevenLabs audio with timeout
 async function generateElevenLabsAudio(text, timeoutMs = 8000) {
@@ -131,6 +151,38 @@ async function sendToOpenClaw(message, phoneNumber) {
   } catch (error) {
     console.error('OpenClaw error:', error.message);
     return generateFallbackResponse(message);
+  }
+}
+
+// Forward SMS to main Telegram chat (no response expected)
+async function forwardSMSToTelegram(message, from) {
+  if (!GATEWAY_TOKEN) {
+    console.log('No gateway token, cannot forward SMS');
+    return;
+  }
+  
+  try {
+    const contactName = getContactName(from);
+    const formattedMessage = `📱 SMS from ${contactName} (${from}):\n\n${message}`;
+    
+    await axios.post(
+      `${GATEWAY_URL}/api/cron/wake`,
+      {
+        text: formattedMessage,
+        mode: 'now'
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 5000
+      }
+    );
+    
+    console.log(`Forwarded SMS from ${contactName} to Telegram`);
+  } catch (error) {
+    console.error('Failed to forward SMS to Telegram:', error.message);
   }
 }
 
@@ -247,24 +299,54 @@ app.get('/audio/:hash.mp3', (req, res) => {
   }
 });
 
-// SMS
+// SMS webhook - forward to Telegram, no auto-reply
 app.post('/sms', async (req, res) => {
-  const twiml = new twilio.twiml.MessagingResponse();
   const body = req.body.Body || '';
   const from = req.body.From;
 
-  console.log(`SMS: "${body}"`);
+  console.log(`SMS from ${from}: "${body}"`);
 
-  try {
-    const response = await sendToOpenClaw(body, from);
-    twiml.message(response);
-  } catch (error) {
-    console.error('SMS error:', error);
-    twiml.message('Sorry, error occurred.');
+  // Forward to Telegram (fire and forget)
+  forwardSMSToTelegram(body, from).catch(err => {
+    console.error('Forward failed:', err.message);
+  });
+
+  // NO auto-reply - just acknowledge receipt to Twilio
+  res.type('text/xml');
+  res.send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+});
+
+// SMS reply API - for sending outbound SMS
+app.post('/api/sms-reply', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const expectedToken = 'Bearer c3531ac0f6242bada467b242f1d37a71e2cbd510ec87d75adfad58fd508bd26a';
+  
+  if (authHeader !== expectedToken) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  res.type('text/xml');
-  res.send(twiml.toString());
+  const { to, message } = req.body;
+  
+  if (!to || !message) {
+    return res.status(400).json({ error: 'Missing to or message' });
+  }
+
+  if (!twilioClient) {
+    return res.status(500).json({ error: 'Twilio not configured' });
+  }
+
+  try {
+    const result = await twilioClient.messages.create({
+      body: message,
+      from: TWILIO_PHONE_NUMBER,
+      to: to
+    });
+
+    res.json({ success: true, sid: result.sid });
+  } catch (error) {
+    console.error('SMS send error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Status
@@ -272,16 +354,19 @@ app.get('/status', (req, res) => {
   res.json({
     status: 'ok',
     service: 'openclaw-voice',
-    version: '3.5.0',
+    version: '3.6.0',
     elevenLabs: !!ELEVENLABS_API_KEY,
     voiceId: ELEVENLABS_VOICE_ID,
     cachedAudio: audioCache.size,
     gateway: !!GATEWAY_TOKEN,
+    twilioConfigured: !!twilioClient,
     uptime: process.uptime()
   });
 });
 
 app.listen(port, () => {
-  console.log(`OpenClaw Voice v3.5 on port ${port}`);
+  console.log(`OpenClaw Voice v3.6 on port ${port}`);
   console.log(`ElevenLabs: ${ELEVENLABS_API_KEY ? 'ENABLED' : 'DISABLED'}`);
+  console.log(`Twilio: ${twilioClient ? 'ENABLED' : 'DISABLED'}`);
+  console.log(`SMS forwarding to Telegram: ${GATEWAY_TOKEN ? 'ENABLED' : 'DISABLED'}`);
 });
